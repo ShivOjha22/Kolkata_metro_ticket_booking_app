@@ -7,6 +7,7 @@ from app.services.unlock_service import verify_and_unlock_system
 from app.services.graph_engine import get_metro_route
 from pydantic import BaseModel, Field
 from typing import List, Optional
+from app.db.sqlite_client import get_sqlite_conn
 
 router = APIRouter()
 
@@ -19,9 +20,29 @@ class StationResponseSchema(BaseModel):
 
 @router.get("/allstations", response_model=List[StationResponseSchema])
 def get_all_stations():
-    """
-    Fetches all metro stations and their line colors from the SQLite static database.
-    """
+    print("ALLSTATIONS START")
+
+    stations = []
+
+    with get_sqlite_conn() as conn:
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT id, name, line
+            FROM stations
+            ORDER BY id
+        """)
+
+        for row in cur.fetchall():
+            stations.append({
+                "id": row["id"],
+                "name": row["name"],
+                "line": row["line"]
+            })
+
+    print("ALLSTATIONS END")
+
+    return stations
     try:
        pass
     except Exception as e:
@@ -71,15 +92,20 @@ def calculate_route(
     destination: str = Query(..., description="Destination station name")
 ):
     """
-    Calculates the shortest metro route, fares, and travel time itinerary using Dijkstra's algorithm.
+    Calculates the shortest metro route using Dijkstra's algorithm.
     """
     try:
         route_info = get_metro_route(source, destination)
         return route_info
+
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Graph routing service error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Graph routing service error: {str(e)}"
+        )
 
 @router.get("/tickets", response_model=List[TicketResponseSchema])
 def list_tickets(db: Session = Depends(get_db)):
